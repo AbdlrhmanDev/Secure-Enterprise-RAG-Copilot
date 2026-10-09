@@ -1,0 +1,4 @@
+{
+  "name": "03_hybrid_rrf",
+  "retrieval": {"mode": "hybrid", "top_k": 20, "fusion": "rrf", "rrf_k": 60, "rerank": false, "final_context_k": 5}
+}

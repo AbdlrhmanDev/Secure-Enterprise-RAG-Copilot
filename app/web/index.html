@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Secure RAG Copilot</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Secure RAG Copilot</div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-view="chat" role="tab">Chat</button>
+      <button class="tab" data-view="documents" role="tab">Documents</button>
+      <button class="tab" data-view="evaluation" role="tab">Evaluation</button>
+    </nav>
+    <div class="controls">
+      <label>Collection
+        <select id="collection"></select>
+      </label>
+      <label>Signed in as
+        <select id="user"></select>
+      </label>
+    </div>
+  </header>
+
+  <main>
+    <section id="view-chat" class="view active">
+      <div class="chat">
+        <div id="messages" class="messages">
+          <div class="empty" id="chat-empty">
+            <h2>Ask a question about your documents</h2>
+            <p>Answers come only from documents your role may read, with citations to the exact passages.</p>
+          </div>
+        </div>
+        <form id="ask" class="ask">
+          <input id="question" type="text" placeholder="e.g. Who must approve a refund above 2,000 USD?" autocomplete="off" required maxlength="2000">
+          <button type="submit" id="ask-button">Ask</button>
+        </form>
+        <details class="settings">
+          <summary>Retrieval settings</summary>
+          <div class="grid">
+            <label>Mode <select id="cfg-mode"><option>hybrid</option><option>dense</option><option>bm25</option></select></label>
+            <label>Fusion <select id="cfg-fusion"><option>rrf</option><option>weighted</option></select></label>
+            <label>top_k <input id="cfg-top_k" type="number" min="1" max="200"></label>
+            <label>Rerank candidates <input id="cfg-rerank_candidates" type="number" min="1" max="200"></label>
+            <label>Context chunks <input id="cfg-final_context_k" type="number" min="1" max="50"></label>
+            <label class="check"><input id="cfg-rerank" type="checkbox"> Rerank</label>
+          </div>
+        </details>
+      </div>
+      <aside id="drawer" class="drawer" hidden>
+        <div class="drawer-head">
+          <h3>Sources</h3>
+          <button id="drawer-close" class="ghost" aria-label="Close sources">Close</button>
+        </div>
+        <div id="drawer-body"></div>
+      </aside>
+    </section>
+
+    <section id="view-documents" class="view">
+      <div class="panel">
+        <h2>Upload a document</h2>
+        <form id="upload" class="upload">
+          <input id="file" type="file" accept=".pdf,.docx,.md,.markdown,.html,.htm,.txt" required>
+          <label>Collection <input id="upload-collection" type="text" pattern="[a-z0-9][a-z0-9_\-]*" required></label>
+          <fieldset id="upload-roles"><legend>Who may read it</legend></fieldset>
+          <button type="submit">Upload</button>
+          <span id="upload-status" class="status"></span>
+        </form>
+      </div>
+      <div class="panel" id="admin-panel" hidden>
+        <h2>Ingestion status</h2>
+        <div id="ingestion-summary" class="stats"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Documents</h2><button id="refresh-docs" class="ghost">Refresh</button></div>
+        <div class="table-wrap">
+          <table id="documents">
+            <thead><tr><th>File</th><th>Collection</th><th>Status</th><th>Roles</th><th>Version</th><th>Pages</th><th>Chunks</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-evaluation" class="view">
+      <div class="panel">
+        <h2>Run an evaluation</h2>
+        <form id="eval" class="upload">
+          <label>Name <input id="eval-name" type="text" value="ui-run" maxlength="64" required></label>
+          <label>Mode <select id="eval-mode"><option>hybrid</option><option>dense</option><option>bm25</option></select></label>
+          <label>K <input id="eval-k" type="number" value="10" min="1" max="50"></label>
+          <label class="check"><input id="eval-rerank" type="checkbox" checked> Rerank</label>
+          <label class="check"><input id="eval-generate" type="checkbox" checked> Score answers</label>
+          <button type="submit">Run</button>
+          <span id="eval-status" class="status"></span>
+        </form>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Runs</h2><button id="refresh-runs" class="ghost">Refresh</button></div>
+        <div id="eval-chart" class="chart"></div>
+        <div class="table-wrap">
+          <table id="runs">
+            <thead><tr><th>Run</th><th>Config</th><th>Recall@K</th><th>Precision@K</th><th>MRR</th><th>nDCG@K</th><th>Correct</th><th>Grounded</th><th>Citation</th><th>Refusal</th><th>ACL leaks</th><th>p95 ms</th><th>USD/query</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p id="eval-note" class="note"></p>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

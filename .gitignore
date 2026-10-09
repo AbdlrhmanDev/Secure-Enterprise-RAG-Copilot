@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.pytest_tmp/
+.pytest_cache/
+.ruff_cache/
+data/
+.env
+# IDE / JVM crash dumps
+replay_pid*.log
+hs_err_pid*.log
+.idea/
+.vscode/
+# personal study notes
+docs/learning-workflow.md
+docs/learning-log/

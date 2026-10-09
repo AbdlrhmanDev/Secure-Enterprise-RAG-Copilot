@@ -1,0 +1,4 @@
+{
+  "name": "04_hybrid_weighted",
+  "retrieval": {"mode": "hybrid", "top_k": 20, "fusion": "weighted", "dense_weight": 0.6, "bm25_weight": 0.4, "rerank": false, "final_context_k": 5}
+}

@@ -1,0 +1,4 @@
+{
+  "name": "05_dense_rerank",
+  "retrieval": {"mode": "dense", "top_k": 20, "rerank": true, "rerank_candidates": 20, "final_context_k": 5}
+}
