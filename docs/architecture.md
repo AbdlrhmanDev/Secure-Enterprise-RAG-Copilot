@@ -96,10 +96,70 @@ a change of chunk size. Three kinds of case:
   refusal, and any retrieved chunk the user may not read counts as a leak.
 
 The default answer metrics are lexical heuristics (token recall against the expected answer,
-token support in the cited passages). `--judge llm` replaces them with an OpenAI judge.
+token support in the cited passages). `--judge llm` replaces them with an OpenAI judge; the
+published results use it.
 
-## Latency target
+## Measured answer quality
 
-Target: p95 under 2.5 s end to end with reranking on CPU and the OpenAI model generating. Retrieval and
-reranking are measured by `scripts/run_eval.py` (see the README for current numbers); generation
-latency with the OpenAI model has not been measured yet.
+The 2026-10-09 run evaluated all six configurations on the full 136-case dataset using
+`gpt-5-mini` for both generation and judging, with `OPENAI_REASONING_EFFORT=low`.
+The corpus contained 125 documents, 630 pages and 1,900 chunks. Retrieval and reranking ran
+on an Intel Core i7-10750H CPU (Windows, 6 cores / 12 logical processors); answer caching
+was disabled. There were no unresolved evidence labels.
+
+| Experiment | Correct | Grounded | Citation | Refusal | False refusal |
+|---|---:|---:|---:|---:|---:|
+| BM25 | 0.633 | 1.000 | 1.000 | 1.000 | 0.367 |
+| Dense | 0.929 | 1.000 | 0.989 | 1.000 | 0.071 |
+| Hybrid (RRF) | 0.857 | 1.000 | 0.971 | 1.000 | 0.122 |
+| Hybrid (weighted 0.6/0.4) | 0.949 | 0.979 | 1.000 | 1.000 | 0.051 |
+| Dense + rerank | 0.918 | 1.000 | 0.989 | 1.000 | 0.082 |
+| Hybrid (RRF) + rerank | 0.949 | 1.000 | 0.995 | 1.000 | 0.051 |
+
+Correctness uses all 98 answerable cases, including false refusals as zero. Groundedness
+uses only non-refused answers. False refusal is the fraction of the 98 answerable cases
+incorrectly refused (lower is better). Citation correctness is computed from the labeled evidence
+chunk IDs, not by the LLM judge, and also excludes refused answers. Refusal accuracy covers
+12 unanswerable and 26 ACL cases. All six configurations returned zero unauthorized chunks
+across their 136 cases. These are synthetic-corpus results from one run; using the same model
+for generation and judging is not an independent quality assessment.
+
+## Latency and cost
+
+Target: p95 under 2.5 s end to end with reranking on CPU and the OpenAI model generating.
+The measured run **does not meet this target**. Hybrid (RRF) + rerank measured
+1987.3 ms p50 and 2976.3 ms p95.
+
+| Experiment | Retrieval p95 ms | Rerank p95 ms | Generation p95 ms | End-to-end p95 ms |
+|---|---:|---:|---:|---:|
+| BM25 | 14.8 | 0.0 | 2579.2 | 2582.9 |
+| Dense | 65.5 | 0.0 | 2768.4 | 2816.3 |
+| Hybrid (RRF) | 71.3 | 0.0 | 2672.3 | 2719.9 |
+| Hybrid (weighted 0.6/0.4) | 1058.5 | 0.0 | 2434.7 | 2706.1 |
+| Dense + rerank | 86.9 | 1017.2 | 2818.2 | 4220.0 |
+| Hybrid (RRF) + rerank | 63.4 | 704.7 | 2329.9 | 2976.3 |
+
+Each percentile is calculated independently over all 136 cases, including refusals;
+stage p95 values should not be added together. End-to-end timing covers the query service
+(retrieval, reranking, generation and citation mapping), not HTTP/browser overhead or the
+subsequent judge calls. The default embedding cache can reuse query vectors between
+experiments, so these are not isolated cold-start measurements. This was a sequential
+local run on a shared laptop, not a concurrent load test.
+
+| Experiment | Mean input tokens | Mean output tokens | USD/query |
+|---|---:|---:|---:|
+| BM25 | 593.3 | 126.5 | 0.000401 |
+| Dense | 862.8 | 138.9 | 0.000494 |
+| Hybrid (RRF) | 816.9 | 139.2 | 0.000483 |
+| Hybrid (weighted 0.6/0.4) | 815.6 | 137.6 | 0.000479 |
+| Dense + rerank | 886.4 | 140.9 | 0.000503 |
+| Hybrid (RRF) + rerank | 831.1 | 135.5 | 0.000479 |
+
+Token counts and costs cover the answer generator only, averaged across all cases.
+The estimate uses the run's configured rates of $0.25 per million input tokens and $2.00 per
+million output tokens. The runner does not record the judge's token usage or cost, so these
+figures cannot be used as the full evaluation bill. Infrastructure costs are also excluded.
+
+The [README](../README.md#measured-results) contains the retrieval comparison and reproduction
+command; [raw results](../evals/experiments/results/) include all six configurations,
+run IDs, summaries and per-case retrieval/answer scores.

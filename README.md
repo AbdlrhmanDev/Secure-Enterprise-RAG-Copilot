@@ -3,6 +3,10 @@
 Hybrid retrieval (BM25 + dense), cross-encoder reranking, grounded answers with citations,
 document-level ACLs and an evaluation suite. Requirements are in `docs/PRD.md`.
 
+![Chat answer with source citations and query timings](docs/images/chat-citations.png)
+
+The local UI answering a demo-corpus question with the supporting passage open.
+
 ## Run locally (no Docker)
 
     uv sync
@@ -24,6 +28,7 @@ without it an offline extractive generator is used.
 
     uv run pytest
     uv run python -m scripts.run_eval --all                # results in evals/experiments/results/
+    uv run python -m scripts.run_eval --all --judge llm    # OpenAI answer-quality judge
     uv run python -m scripts.run_eval --all --no-generate  # retrieval metrics only
 
 Demo users (`POST /auth/token`): `u_employee`, `u_finance`, `u_engineer`, `u_admin`.
@@ -103,33 +108,78 @@ Diagrams and the security model are in `docs/architecture.md`.
 
 ## Measured results
 
+Measured on **2026-10-09**: all six experiments, 136 cases each (816 case runs).
 Corpus: 125 synthetic documents, 630 pages, 1,900 chunks (chunk size 220, overlap 40).
-K = 10, 98 answerable cases, 38 cases that must be refused. Embedder `bge-small-en-v1.5`,
-reranker `ms-marco-MiniLM-L-6-v2`, CPU only. Reproduce with `python -m scripts.run_eval --all`.
+K = 10; 98 answerable cases (54 paraphrased), 12 unanswerable and 26 ACL cases.
+Embedder `BAAI/bge-small-en-v1.5`, reranker `Xenova/ms-marco-MiniLM-L-6-v2`, retrieval and
+reranking on a shared Windows laptop with an Intel Core i7-10750H CPU (6 cores / 12 logical processors).
+Both generation and the LLM judge use `gpt-5-mini` with reasoning effort `low`.
 
-| Experiment | Recall@10 | MRR | nDCG@10 | ACL leaks | p50 ms | p95 ms |
-|---|---:|---:|---:|---:|---:|---:|
-| BM25 | 0.663 | 0.576 | 0.597 | 0 | 8.5 | 16.9 |
-| Dense | 0.949 | 0.889 | 0.904 | 0 | 142.1 | 221.7 |
-| Hybrid (RRF) | 0.949 | 0.775 | 0.816 | 0 | 71.2 | 168.4 |
-| Hybrid (weighted 0.6/0.4) | 0.959 | 0.860 | 0.885 | 0 | 76.0 | 183.6 |
-| Dense + rerank | 0.959 | 0.897 | 0.912 | 0 | 771.0 | 1304.9 |
-| Hybrid (RRF) + rerank | 0.959 | 0.906 | 0.919 | 0 | 827.4 | 1156.1 |
+With `OPENAI_API_KEY` configured, reproduce in PowerShell after stopping the local API:
+
+```powershell
+$env:OPENAI_MODEL = "gpt-5-mini"
+$env:JUDGE_MODEL = "gpt-5-mini"
+$env:OPENAI_REASONING_EFFORT = "low"
+$env:LLM_INPUT_PRICE_PER_MTOK = "0.25"
+$env:LLM_OUTPUT_PRICE_PER_MTOK = "2.0"
+uv run python -m scripts.run_eval --all --judge llm
+```
+
+Retrieval quality (98 answerable cases):
+
+| Experiment | Recall@10 | MRR | nDCG@10 | ACL leaks |
+|---|---:|---:|---:|---:|
+| BM25 | 0.663 | 0.576 | 0.597 | 0 |
+| Dense | 0.949 | 0.889 | 0.904 | 0 |
+| Hybrid (RRF) | 0.949 | 0.775 | 0.816 | 0 |
+| Hybrid (weighted 0.6/0.4) | 0.959 | 0.860 | 0.884 | 0 |
+| Dense + rerank | 0.959 | 0.897 | 0.912 | 0 |
+| Hybrid (RRF) + rerank | 0.959 | 0.906 | 0.919 | 0 |
+
+Answer quality (scores from 0 to 1):
+
+| Experiment | Correct | Grounded | Citation | Refusal | False refusal |
+|---|---:|---:|---:|---:|---:|
+| BM25 | 0.633 | 1.000 | 1.000 | 1.000 | 0.367 |
+| Dense | 0.929 | 1.000 | 0.989 | 1.000 | 0.071 |
+| Hybrid (RRF) | 0.857 | 1.000 | 0.971 | 1.000 | 0.122 |
+| Hybrid (weighted 0.6/0.4) | 0.949 | 0.979 | 1.000 | 1.000 | 0.051 |
+| Dense + rerank | 0.918 | 1.000 | 0.989 | 1.000 | 0.082 |
+| Hybrid (RRF) + rerank | 0.949 | 1.000 | 0.995 | 1.000 | 0.051 |
+
+End-to-end query latency and estimated generation cost (all 136 cases per experiment):
+
+| Experiment | p50 ms | p95 ms | USD/query |
+|---|---:|---:|---:|
+| BM25 | 1441.1 | 2582.9 | 0.000401 |
+| Dense | 1572.8 | 2816.3 | 0.000494 |
+| Hybrid (RRF) | 1577.8 | 2719.9 | 0.000483 |
+| Hybrid (weighted 0.6/0.4) | 1681.8 | 2706.1 | 0.000479 |
+| Dense + rerank | 2266.2 | 4220.0 | 0.000503 |
+| Hybrid (RRF) + rerank | 1987.3 | 2976.3 | 0.000479 |
 
 How to read this:
 
-- The corpus is synthetic and small, and the filler documents are templated. Treat the numbers
-  as a working benchmark harness, not as evidence about real company documents.
-- Latency was measured on a laptop while other containers were running, with the offline
-  extractive generator, so it covers retrieval and reranking only. Reranking 20 candidates on
-  CPU is nearly all of it.
-- Answer metrics in this run come from the extractive fallback generator and lexical
-  heuristics: answer correctness 0.43-0.44, citation correctness 0.97-0.99, refusal accuracy
-  0.76-0.82. The extractive generator cannot handle paraphrased questions, which is most of the
-  correctness gap. The OpenAI generator and the LLM judge have not been run (no API key was
-  available), so there are no token or cost figures yet.
+- Correctness is LLM-judged over all 98 answerable cases; a refusal scores zero. Groundedness
+  is LLM-judged only on answers that were not refused. False refusal is the fraction of
+  answerable cases incorrectly refused (lower is better). Citation correctness is the fraction
+  of cited chunks matching the labeled evidence, averaged over those same answers.
+- Refusal accuracy covers the 38 unanswerable/ACL cases. ACL leaks count unauthorized chunks
+  returned across all 136 cases; zero observed leaks is a result for this test set.
+- Latency includes retrieval, reranking and OpenAI generation with answer caching disabled.
+  Query embeddings can be reused between experiments by the default embedding cache.
+  Judge calls run afterward and are excluded from query latency. The 2.5 s p95 target is not
+  met in this run; see the stage breakdown in [architecture.md](docs/architecture.md#latency-and-cost).
+- Cost uses recorded generation token usage at the configured rates of $0.25 per million
+  input tokens and $2.00 per million output tokens. It excludes judge calls and infrastructure;
+  it is an estimate, not the total evaluation bill.
+- The corpus is small and synthetic, with templated filler documents. This is one sequential
+  run, not a concurrency/load test or a confidence interval. The generator and judge use the
+  same model, so the quality scores are not an independent human assessment.
 
-Full per-case output is in `evals/experiments/results/`.
+Full per-case output and the comparison at stored precision are in
+[evals/experiments/results/](evals/experiments/results/).
 
 ## Configuration
 
@@ -139,6 +189,8 @@ All settings are environment variables (see `app/config.py`). The ones you are m
 |---|---|---|
 | `OPENAI_API_KEY` | unset | Enables OpenAI for generation and the LLM judge |
 | `OPENAI_MODEL` | `gpt-5-mini` | Generation model |
+| `OPENAI_REASONING_EFFORT` | unset (model default) | Set to `low` to reproduce the measured run; also used by the judge |
+| `JUDGE_MODEL` | `OPENAI_MODEL` | Model used with `--judge llm` |
 | `LLM_INPUT_PRICE_PER_MTOK`, `LLM_OUTPUT_PRICE_PER_MTOK` | `0.25`, `2.0` | Prices used for the cost estimate; set to your model's current list price |
 | `RETRIEVAL_MODE` | `hybrid` | `bm25`, `dense` or `hybrid` |
 | `RERANK` | `true` | Cross-encoder reranking |
